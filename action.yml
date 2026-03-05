@@ -29,6 +29,14 @@ inputs:
     description: "Filter to apply to checks"
     required: false
     default: "**"
+  list:
+    description: "List available checks and output as JSON array instead of running them"
+    required: false
+    default: "false"
+outputs:
+  checks:
+    description: "JSON array of check names (only set when list is true)"
+    value: ${{ steps.list.outputs.checks }}
 runs:
   using: "composite"
   steps:
@@ -72,20 +80,24 @@ runs:
         curl -fsSL https://dl.dagger.io/dagger/install.sh | \
         BIN_DIR=${prefix_dir}/bin DAGGER_VERSION="$VERSION" DAGGER_COMMIT="$COMMIT" sh
         echo "::endgroup::"
-    - id: exec
+    - id: list
+      if: inputs.list == 'true'
       shell: bash
       env:
         DAGGER_MODULE: ${{ inputs.module }}
         DAGGER_PROGRESS: ${{ inputs.progress }}
         DAGGER_CLOUD_TOKEN: ${{ inputs.cloud-token }}
       run: |
-        echo DEBUG
-        echo --- env ---
-        env
-        echo --- pwd ---
-        pwd
-        echo --- .docker ---
-        find ~ -name .docker
-        echo -------
+        cd ${{ inputs.workdir }}
+        checks=$(dagger check -l 2>/dev/null | tail -n +2 | awk '{print $1}' | jq -R -s -c 'split("\n") | map(select(length > 0))')
+        echo "checks=${checks}" >> $GITHUB_OUTPUT
+    - id: exec
+      if: inputs.list != 'true'
+      shell: bash
+      env:
+        DAGGER_MODULE: ${{ inputs.module }}
+        DAGGER_PROGRESS: ${{ inputs.progress }}
+        DAGGER_CLOUD_TOKEN: ${{ inputs.cloud-token }}
+      run: |
         cd ${{ inputs.workdir }}
         dagger checks '${{ inputs.filter }}'
